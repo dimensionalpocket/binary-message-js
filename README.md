@@ -1,4 +1,4 @@
-# (PROPOSAL)
+# (PROPOSAL 1)
 
 # @dimensionalpocket/binary-message
 
@@ -8,7 +8,7 @@ This library is an extension of [buffer-backed-object](https://github.com/Google
 
 ```javascript
 import * as BBO from "buffer-backed-object"
-import BinaryMessage from "@dimensionalpocket/binary-message"
+import { BinaryMessage } from "@dimensionalpocket/binary-message"
 
 class MyBinaryMessage extends BinaryMessage {
   constructor (size = null, buffer = null) {
@@ -67,14 +67,15 @@ Being able to replace the buffer would allow a single instance of your message o
 const clientMessage = new MyBinaryMessage(1024 * 1024 * 8)
 console.log(clientMessage.buffer.byteLength) // 8388608
 
-// Fill your message properties with data
+// Fill your message properties with data.
 clientMessage.id = 123
 clientMessage.position.x = 456
 // etc
 
-// Transfer the underlying buffer to a worker.
+// Transfer the underlying buffer to a web worker.
+worker.postMessage(clientMessage.buffer, [clientMessage.buffer]);
+
 // The buffer will be gone after this.
-worker.postMessage(clientMessage.buffer, [message.buffer]);
 console.log(clientMessage.buffer.byteLength) // 0
 
 // clientMessage properties will be reset, but the instance will still be alive.
@@ -90,17 +91,17 @@ clientMessage.id = 789
 clientMessage.position.x = 123
 // etc
 
-// ---------------------
-// ---- WORKER SIDE ----
-// ---------------------
+// -------------------------
+// ---- WEB WORKER SIDE ----
+// -------------------------
 
 // Create a persistent message object with an 8MB size
-// that will receive buffers from the client.
+// that will "parse" buffers from the client.
 const workerMessage = new MyBinaryMessage(1024 * 1024 * 8)
 console.log(workerMessage.buffer.byteLength) // 8388608
 
-onmessage = function (arrayBuffer) => {
-  workerMessage.buffer = arrayBuffer
+self.onmessage = function (transferredArrayBuffer) => {
+  workerMessage.buffer = transferredArrayBuffer
 
   // You can then read the message properties
   // from the transferred buffer.
