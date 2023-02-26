@@ -1,5 +1,2 @@
-import { Uint32 } from './Uint32.js'
-
-export default {
-  Uint32: Uint32
-}
+export { Uint32 } from './Uint32.js'
+export { Uint8 } from './Uint8.js'

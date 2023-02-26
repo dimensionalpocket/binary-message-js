@@ -5,16 +5,19 @@ const INTERNALS_COUNT = 3
 
 export class BinaryMessage {
   /**
-   * @param {object} options
-   * @param {number} options.byteLength - The total size of the buffer for the entire message.
+   * @param {BinaryMessageSchema} schema
+   * @param {object} [options]
+   * @param {number} [options.byteLength] - The total size of the buffer for the entire message. If not provided, will auto-calculate based on schema.
    * @param {number} [options.byteOffset] - The number of bytes to skip from the start of the buffer. Defaults to zero.
    * @param {ArrayBuffer} [options.buffer] - If not provided, will create a buffer automatically with the correct size.
-   * param {BinaryMessageSchema}
    */
-  constructor (options) {
+  constructor (schema, options = undefined) {
+    if (!schema) {
+      throw new Error('BinaryMessage: schema is required')
+    }
+
     const internals = new Uint32Array(INTERNALS_COUNT)
-    internals[INTERNALS_BYTE_LENGTH] = options.byteLength || 0
-    internals[INTERNALS_BYTE_OFFSET] = options.byteOffset || 0
+    internals[INTERNALS_BYTE_OFFSET] = options?.byteOffset || 0
     internals[INTERNALS_STRIDE] = internals[INTERNALS_BYTE_OFFSET]
 
     /**
@@ -27,17 +30,51 @@ export class BinaryMessage {
 
     /**
      * @private
-     * Will be populated when adding properties.
+     * The compiled schema.
      *
-     * @type {BinaryMessageSchema}
+     * @type {BinaryMessageInternalSchema}
      */
     this._schema = {}
+    var compiledSchema = this._schema
+
+    for (let propertyName in schema) {
+      let property = schema[propertyName]
+      let descriptor = property.type
+      if (!descriptor) {
+        throw new Error(`Property ${propertyName} missing type`)
+      }
+
+      let propertyByteLength = descriptor.size
+      let propertyByteOffset = this.setNextPropertyByteOffset(propertyByteLength)
+
+      const compiledProperty = {
+        descriptor: descriptor,
+        byteLength: propertyByteLength,
+        byteOffset: propertyByteOffset
+      }
+
+      compiledSchema[propertyName] = compiledProperty
+
+      Object.defineProperty(this, propertyName, {
+        /** @this {BinaryMessage} */
+        get () { return descriptor.get(this.dataView, propertyByteOffset) },
+
+        /** @this {BinaryMessage} */
+        set (value) { descriptor.set(this.dataView, propertyByteOffset, value) },
+
+        enumerable: true,
+        configurable: false
+      })
+    }
+
+    // Byte Length can only be calculated after all properties are added.
+    internals[INTERNALS_BYTE_LENGTH] = options?.byteLength || internals[INTERNALS_STRIDE]
 
     /**
      * @private
      * @type {ArrayBuffer}
      */
-    this._buffer = options.buffer || new ArrayBuffer(this.byteLength)
+    this._buffer = options?.buffer || new ArrayBuffer(this.byteLength)
 
     /**
      * @type {DataView}
@@ -60,49 +97,6 @@ export class BinaryMessage {
 
   get byteOffset () {
     return this.internals[INTERNALS_BYTE_OFFSET]
-  }
-
-  /**
-   * Adds a property to the object with a getter and setter
-   * that will use the underlying buffer.
-   *
-   * @param {string} propertyName
-   * @param {object} options
-   * @param {Descriptor<any>} options.type
-   */
-  addProperty (propertyName, options) {
-    const schema = this._schema
-    if (schema[propertyName]) {
-      throw new Error(`Property ${propertyName} already exists on object ${this}`)
-    }
-
-    const descriptor = options.type
-    if (!descriptor) {
-      throw new Error(`Property ${propertyName} missing type`)
-    }
-
-    const propertyByteLength = descriptor.size
-    const propertyByteOffset = this.setNextPropertyByteOffset(propertyByteLength)
-
-    const property = {
-      descriptor: options.type,
-      byteLength: propertyByteLength,
-      byteOffset: propertyByteOffset
-    }
-
-    schema[propertyName] = property
-
-    Object.defineProperty(this, propertyName, {
-      /** @this {BinaryMessage} */
-      get () { return descriptor.get(this.dataView, propertyByteOffset) },
-
-      /** @this {BinaryMessage} */
-      set (value) { descriptor.set(this.dataView, propertyByteOffset, value) },
-
-      enumerable: true,
-      configurable: false,
-      writable: false
-    })
   }
 
   /**
