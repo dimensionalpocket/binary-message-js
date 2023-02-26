@@ -1,35 +1,30 @@
-# (PROPOSAL 1)
+# (PROPOSAL 2)
 
 # @dimensionalpocket/binary-message
 
-This library is an extension of [buffer-backed-object](https://github.com/GoogleChromeLabs/buffer-backed-object) with a more OO implementation and a replaceable buffer.
+This library is an alternative to [buffer-backed-object](https://github.com/GoogleChromeLabs/buffer-backed-object) with a more naive OO implementation and a replaceable buffer.
+
+It's intended to be used as an interface to transfer binary data to/from web workers and websockets.
 
 ## Usage
 
 ```javascript
-import * as BBO from "buffer-backed-object"
-import { BinaryMessage } from "@dimensionalpocket/binary-message"
+// Create a class for a message that you want to exchange,
+// and define its properties in the constructor.
+import { BinaryMessage, Uint32, Utf8String } from "@dimensionalpocket/binary-message"
 
 class MyBinaryMessage extends BinaryMessage {
-  constructor (size = null, buffer = null) {
-    // Define your schema as if you were using buffer-backed-object (BBO).
-    // If not provided, size is automatically calculated (if possible) based on provided schema.
+  constructor () {
     super({
-      id: BBO.BufferBackedObject.Uint16({ endianness: "big" }),
-      position: BBO.NestedBufferBackedObject({
-        x: BBO.Float32(),
-        y: BBO.Float32(),
-        z: BBO.Float32(),
-      }),
-      normal: BBO.NestedBufferBackedObject({
-        x: BBO.Float32(),
-        y: BBO.Float32(),
-        z: BBO.Float32(),
-      }),
-      textureId: BBO.Uint8(),
+      schema: {
+        code: { type: Uint32 },
+        text: { type: Utf8String, size: 255 }
+      }
     })
 
-    if (buffer) this.buffer = buffer
+    // Add the comments below if you want to annotate your properties (e.g., JSDoc)
+    /** @member {number} code - Code */
+    /** @member {string} text - Message string */
   }
 }
 
@@ -37,18 +32,21 @@ class MyBinaryMessage extends BinaryMessage {
 // It will automatically create a buffer if you don't provide one.
 var message = new MyMessage()
 
-// Access message properties as you would normally do with BBO.
-message.id
-message.position.x
-message.normal.y
-message.textureId
+// Write message properties as you would normally do.
+// This will update the underlying buffer.
+message.id = 123
+message.text = 'Test message'
+
+// Read from the underlying buffer.
+message.id   // <= 123
+message.text // <= 'Test message'
 
 // Get the underlying buffer.
 message.buffer
 
 // Replace the underlying buffer.
 // Object properties will then return the values from new buffer.
-message.buffer = new ArrayBuffer(...)
+message.buffer = new ArrayBuffer(message.byteLength)
 ```
 
 ## Why
@@ -64,13 +62,11 @@ Being able to replace the buffer would allow a single instance of your message o
 
 // Create a persistent client message object with an 8MB size.
 // It will be reused every time the client sends a message to the worker.
-const clientMessage = new MyBinaryMessage(1024 * 1024 * 8)
+const clientMessage = new MyBinaryMessage({ byteLength: 1024 * 1024 * 8 })
 console.log(clientMessage.buffer.byteLength) // 8388608
 
 // Fill your message properties with data.
 clientMessage.id = 123
-clientMessage.position.x = 456
-// etc
 
 // Transfer the underlying buffer to a web worker.
 worker.postMessage(clientMessage.buffer, [clientMessage.buffer]);
@@ -96,18 +92,17 @@ clientMessage.position.x = 123
 // -------------------------
 
 // Create a persistent message object with an 8MB size
-// that will "parse" buffers from the client.
+// that will "parse" buffers received from the client.
 const workerMessage = new MyBinaryMessage(1024 * 1024 * 8)
 console.log(workerMessage.buffer.byteLength) // 8388608
 
-self.onmessage = function (transferredArrayBuffer) => {
+self.onmessage = function (transferredArrayBuffer) {
   workerMessage.buffer = transferredArrayBuffer
 
   // You can then read the message properties
   // from the transferred buffer.
   workerMessage.id // <= 123
-  workerMessage.position.x // <= 456
-})
+}
 ```
 
 ## License
